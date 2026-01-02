@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { parseEther, keccak256, toBytes } from 'viem'
+import { parseEther, keccak256, toBytes, type Abi } from 'viem'
 import { contracts } from '../../config'
 import TradeEscrowABI from '../../abi/TradeEscrow.json'
+import { useMetaTransaction } from '../../hooks'
+
+const tradeEscrowAbi = TradeEscrowABI as Abi
 
 interface CreateOrderProps {
   vaultAddress: `0x${string}`
@@ -15,19 +17,18 @@ export function CreateOrder({ vaultAddress }: CreateOrderProps) {
   const [amount, setAmount] = useState('')
   const [lockDuration, setLockDuration] = useState('259200') // 3 days default
 
-  const { writeContract, data: hash, isPending } = useWriteContract()
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+  const { execute, status, txHash, error } = useMetaTransaction()
 
-  const isDisabled = isPending || isConfirming
+  const isLoading = status === 'signing' || status === 'relaying'
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!orderId || !buyer || !tokenId || !amount) return
 
     const orderIdBytes = orderId.startsWith('0x') ? orderId : keccak256(toBytes(orderId))
 
-    writeContract({
-      address: contracts.TRADE_ESCROW as `0x${string}`,
-      abi: TradeEscrowABI,
+    await execute({
+      to: contracts.TRADE_ESCROW as `0x${string}`,
+      abi: tradeEscrowAbi,
       functionName: 'createOrder',
       args: [
         orderIdBytes as `0x${string}`,
@@ -37,8 +38,19 @@ export function CreateOrder({ vaultAddress }: CreateOrderProps) {
         parseEther(amount),
         BigInt(lockDuration),
       ],
+      gas: 300000n,
     })
   }
+
+  const getStatusText = () => {
+    if (status === 'signing') return 'Sign in wallet...'
+    if (status === 'relaying') return 'Relaying...'
+    if (status === 'success') return `Success! ${txHash?.slice(0, 10)}...`
+    if (status === 'error') return `Error: ${error}`
+    return null
+  }
+
+  const statusText = getStatusText()
 
   return (
     <div className="p-3 bg-gray-700 rounded mb-4">
@@ -83,13 +95,20 @@ export function CreateOrder({ vaultAddress }: CreateOrderProps) {
           className="px-3 py-2 bg-gray-600 rounded text-sm"
         />
       </div>
-      <button
-        onClick={handleCreate}
-        disabled={isDisabled || !orderId || !buyer || !tokenId || !amount}
-        className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-      >
-        Create Order
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleCreate}
+          disabled={isLoading || !orderId || !buyer || !tokenId || !amount}
+          className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isLoading ? 'Processing...' : 'Create Order'}
+        </button>
+        {statusText && (
+          <span className={`text-sm ${status === 'error' ? 'text-red-400' : 'text-gray-400'}`}>
+            {statusText}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
