@@ -1,5 +1,4 @@
 export { useVaults } from './useVaults'
 export { useVaultDetails } from './useVaultDetails'
-export { useNftMetadata } from './useNftMetadata'
 export { useOrder } from './useOrder'
 export { useIdrpBalance } from './useIdrpBalance'

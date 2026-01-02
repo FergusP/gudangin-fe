@@ -3,17 +3,17 @@
     "type": "constructor",
     "inputs": [
       {
+        "name": "_trustedForwarder",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "_idrpToken",
         "type": "address",
         "internalType": "address"
       },
       {
         "name": "_goodsToken",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_router",
         "type": "address",
         "internalType": "address"
       },
@@ -144,19 +144,6 @@
   },
   {
     "type": "function",
-    "name": "ROUTER",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IGoodsRouter"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "admin",
     "inputs": [],
     "outputs": [
@@ -222,6 +209,13 @@
   },
   {
     "type": "function",
+    "name": "decrementPendingOrders",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "endVault",
     "inputs": [],
     "outputs": [],
@@ -244,12 +238,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "vendor",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
+        "name": "totalAmount",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -301,12 +290,17 @@
         "internalType": "uint256"
       },
       {
-        "name": "vendor",
-        "type": "address",
-        "internalType": "address"
+        "name": "vendors",
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
-        "name": "amount",
+        "name": "amounts",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "totalAmount",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -441,6 +435,13 @@
   },
   {
     "type": "function",
+    "name": "incrementPendingOrders",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "initialize",
     "inputs": [
       {
@@ -455,6 +456,11 @@
       },
       {
         "name": "_collateralTokenId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_collateralValue",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -551,6 +557,25 @@
   },
   {
     "type": "function",
+    "name": "isTrustedForwarder",
+    "inputs": [
+      {
+        "name": "forwarder",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "liquidateToInvestor",
     "inputs": [],
     "outputs": [],
@@ -618,16 +643,16 @@
   },
   {
     "type": "function",
-    "name": "receiveGoods",
-    "inputs": [
+    "name": "pendingOrderCount",
+    "inputs": [],
+    "outputs": [
       {
-        "name": "tokenId",
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -668,6 +693,16 @@
         "name": "tokenId",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "vendors",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "amounts",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
       }
     ],
     "outputs": [
@@ -800,6 +835,19 @@
     "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "trustedForwarder",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
     "type": "event",
     "name": "CollateralLiquidated",
     "inputs": [
@@ -880,16 +928,16 @@
         "internalType": "uint256"
       },
       {
-        "name": "vendor",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        "name": "vendors",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
       },
       {
-        "name": "amount",
-        "type": "uint256",
+        "name": "amounts",
+        "type": "uint256[]",
         "indexed": false,
-        "internalType": "uint256"
+        "internalType": "uint256[]"
       }
     ],
     "anonymous": false
@@ -911,16 +959,16 @@
         "internalType": "uint256"
       },
       {
-        "name": "vendor",
-        "type": "address",
+        "name": "vendors",
+        "type": "address[]",
         "indexed": false,
-        "internalType": "address"
+        "internalType": "address[]"
       },
       {
-        "name": "amount",
-        "type": "uint256",
+        "name": "amounts",
+        "type": "uint256[]",
         "indexed": false,
-        "internalType": "uint256"
+        "internalType": "uint256[]"
       }
     ],
     "anonymous": false

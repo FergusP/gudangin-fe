@@ -1,16 +1,7 @@
 import { useReadContract } from 'wagmi'
 import { contracts } from '../config'
 import TradeEscrowABI from '../abi/TradeEscrow.json'
-
-export interface Order {
-  buyer: string
-  vault: string
-  tokenId: bigint
-  amount: bigint
-  state: number
-  createdAt: bigint
-  releaseAt: bigint
-}
+import type { Order } from '../types'
 
 export function useOrder(orderId: string) {
   const enabled = !!orderId && orderId.startsWith('0x')

@@ -1,5 +1,6 @@
 import { useReadContract } from 'wagmi'
 import VaultABI from '../abi/Vault.json'
+import type { VaultState } from '../types'
 
 export function useVaultDetails(vaultAddress: `0x${string}` | null) {
   const enabled = !!vaultAddress
@@ -25,10 +26,31 @@ export function useVaultDetails(vaultAddress: `0x${string}` | null) {
     query: { enabled },
   })
 
+  const { data: admin } = useReadContract({
+    address: vaultAddress ?? undefined,
+    abi: VaultABI,
+    functionName: 'admin',
+    query: { enabled },
+  })
+
   const { data: totalDeposited } = useReadContract({
     address: vaultAddress ?? undefined,
     abi: VaultABI,
     functionName: 'totalDeposited',
+    query: { enabled },
+  })
+
+  const { data: totalSpent } = useReadContract({
+    address: vaultAddress ?? undefined,
+    abi: VaultABI,
+    functionName: 'totalSpent',
+    query: { enabled },
+  })
+
+  const { data: totalSaleProceeds } = useReadContract({
+    address: vaultAddress ?? undefined,
+    abi: VaultABI,
+    functionName: 'totalSaleProceeds',
     query: { enabled },
   })
 
@@ -74,16 +96,27 @@ export function useVaultDetails(vaultAddress: `0x${string}` | null) {
     query: { enabled },
   })
 
+  const { data: pendingOrderCount } = useReadContract({
+    address: vaultAddress ?? undefined,
+    abi: VaultABI,
+    functionName: 'pendingOrderCount',
+    query: { enabled },
+  })
+
   return {
-    state: state as number | undefined,
-    trader: trader as string | undefined,
-    investor: investor as string | undefined,
+    state: state as VaultState | undefined,
+    trader: trader as `0x${string}` | undefined,
+    investor: investor as `0x${string}` | undefined,
+    admin: admin as `0x${string}` | undefined,
     totalDeposited: totalDeposited as bigint | undefined,
+    totalSpent: totalSpent as bigint | undefined,
+    totalSaleProceeds: totalSaleProceeds as bigint | undefined,
     availableFunds: availableFunds as bigint | undefined,
     maxDeposit: maxDeposit as bigint | undefined,
     collateralTokenId: collateralTokenId as bigint | undefined,
     collateralValue: collateralValue as bigint | undefined,
     nextReleaseId: nextReleaseId as bigint | undefined,
     investorProfitShareBps: investorProfitShareBps as bigint | undefined,
+    pendingOrderCount: pendingOrderCount as bigint | undefined,
   }
 }
