@@ -72,7 +72,7 @@ export function useMetaTransaction(): UseMetaTransactionReturn {
           getNonce(address),
         ])
 
-        const deadline = getDeadline()
+        const deadline = BigInt(getDeadline())
         const gas = params.gas || DEFAULT_GAS
 
         // Prepare the forward request message (for signing)
@@ -91,7 +91,7 @@ export function useMetaTransaction(): UseMetaTransactionReturn {
           domain: {
             name: domain.name,
             version: domain.version,
-            chainId: domain.chainId,
+            chainId: BigInt(domain.chainId),
             verifyingContract: domain.verifyingContract as `0x${string}`,
           },
           types: ForwardRequestTypes,

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { formatEther, keccak256, toBytes, type Abi } from 'viem'
 import { contracts } from '../../config'
 import TradeEscrowABI from '../../abi/TradeEscrow.json'
@@ -8,7 +9,6 @@ import { OrderState } from '../../types'
 import { useMetaTransaction } from '../../hooks'
 
 const tradeEscrowAbi = TradeEscrowABI as Abi
-const idrpAbi = IDRPABI as Abi
 
 interface OrderActionsProps {
   orderId: `0x${string}`
@@ -19,18 +19,24 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
   const [shipDocsUri, setShipDocsUri] = useState('')
   const [disputeReason, setDisputeReason] = useState('')
 
+  // Direct tx for IDRP approve (token doesn't support ERC-2771)
+  const { writeContract, data: hash, isPending } = useWriteContract()
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+
+  // Meta-tx for TradeEscrow actions (TradeEscrow supports ERC-2771)
   const { execute, status, txHash, error } = useMetaTransaction()
 
-  const isLoading = status === 'signing' || status === 'relaying'
+  const isMetaTxLoading = status === 'signing' || status === 'relaying'
+  const isApproveLoading = isPending || isConfirming
+  const isDisabled = isMetaTxLoading || isApproveLoading
 
-  const handleApproveIDRP = async () => {
+  const handleApproveIDRP = () => {
     if (!order) return
-    await execute({
-      to: contracts.IDRP_TOKEN as `0x${string}`,
-      abi: idrpAbi,
+    writeContract({
+      address: contracts.IDRP_TOKEN as `0x${string}`,
+      abi: IDRPABI,
       functionName: 'approve',
       args: [contracts.TRADE_ESCROW as `0x${string}`, order.amount],
-      gas: 100000n,
     })
   }
 
@@ -84,6 +90,7 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
   const canRelease = order?.state === OrderState.SHIPPED
 
   const getStatusText = () => {
+    if (isApproveLoading) return 'Approving IDRP...'
     if (status === 'signing') return 'Sign in wallet...'
     if (status === 'relaying') return 'Relaying...'
     if (status === 'success') return `Success! ${txHash?.slice(0, 10)}...`
@@ -105,14 +112,14 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
       <div className="flex gap-2">
         <button
           onClick={handleApproveIDRP}
-          disabled={isLoading || !order || !canFund}
+          disabled={isDisabled || !order || !canFund}
           className="px-4 py-2 bg-yellow-600 rounded hover:bg-yellow-700 disabled:opacity-50"
         >
           Approve {order ? formatEther(order.amount) : '0'} IDRP
         </button>
         <button
           onClick={handleFund}
-          disabled={isLoading || !canFund}
+          disabled={isDisabled || !canFund}
           className="px-4 py-2 bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
         >
           Fund Order
@@ -130,7 +137,7 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
         />
         <button
           onClick={handleMarkShipped}
-          disabled={isLoading || !shipDocsUri || !canShip}
+          disabled={isDisabled || !shipDocsUri || !canShip}
           className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
         >
           Mark Shipped
@@ -148,7 +155,7 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
         />
         <button
           onClick={handleRaiseDispute}
-          disabled={isLoading || !disputeReason || !canDispute}
+          disabled={isDisabled || !disputeReason || !canDispute}
           className="px-4 py-2 bg-orange-600 rounded hover:bg-orange-700 disabled:opacity-50"
         >
           Raise Dispute
@@ -158,7 +165,7 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
       {/* Release */}
       <button
         onClick={handleRelease}
-        disabled={isLoading || !canRelease}
+        disabled={isDisabled || !canRelease}
         className="px-4 py-2 bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50"
       >
         Release Funds
