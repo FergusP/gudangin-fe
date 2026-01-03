@@ -1,39 +1,83 @@
 import { useState } from 'react'
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { parseEther } from 'viem'
+import { parseEther, type Abi } from 'viem'
 import { contracts } from '../config'
 import VaultFactoryABI from '../abi/VaultFactory.json'
 import GoodsTokenABI from '../abi/GoodsToken.json'
+import { useMetaTransaction } from '../hooks'
+
+const vaultFactoryAbi = VaultFactoryABI as Abi
+const goodsTokenAbi = GoodsTokenABI as Abi
 
 export function CreateVault() {
   const [tokenId, setTokenId] = useState('')
   const [collateralValue, setCollateralValue] = useState('')
   const [profitShare, setProfitShare] = useState('1000') // 10% default
 
-  const { writeContract, data: hash, isPending } = useWriteContract()
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+  // Meta-tx for NFT approve (GoodsToken now supports ERC-2771)
+  const {
+    execute: executeApprove,
+    status: approveStatus,
+    error: approveError,
+    reset: resetApprove,
+  } = useMetaTransaction()
 
-  const handleApproveNFT = () => {
+  // Meta-tx for createVault (VaultFactory supports ERC-2771)
+  const {
+    execute: executeCreate,
+    status: createStatus,
+    txHash,
+    error: createError,
+  } = useMetaTransaction()
+
+  const isApproveLoading = approveStatus === 'signing' || approveStatus === 'relaying'
+  const isCreateLoading = createStatus === 'signing' || createStatus === 'relaying'
+  const isDisabled = isApproveLoading || isCreateLoading
+
+  const handleApproveNFT = async () => {
     if (!tokenId) return
-    writeContract({
-      address: contracts.GOODS_TOKEN as `0x${string}`,
-      abi: GoodsTokenABI,
+    resetApprove()
+    await executeApprove({
+      to: contracts.GOODS_TOKEN as `0x${string}`,
+      abi: goodsTokenAbi,
       functionName: 'approve',
       args: [contracts.VAULT_FACTORY as `0x${string}`, BigInt(tokenId)],
+      gas: 100000n,
     })
   }
 
-  const handleCreateVault = () => {
+  const handleCreateVault = async () => {
     if (!tokenId || !collateralValue || !profitShare) return
-    writeContract({
-      address: contracts.VAULT_FACTORY as `0x${string}`,
-      abi: VaultFactoryABI,
+    await executeCreate({
+      to: contracts.VAULT_FACTORY as `0x${string}`,
+      abi: vaultFactoryAbi,
       functionName: 'createVaultWithCollateral',
       args: [BigInt(tokenId), parseEther(collateralValue), BigInt(profitShare)],
+      gas: 3500000n, // Vault deployment needs ~3M gas
     })
   }
 
-  const isDisabled = isPending || isConfirming
+  const getApproveButtonText = () => {
+    if (approveStatus === 'signing') return 'Sign in wallet...'
+    if (approveStatus === 'relaying') return 'Relaying...'
+    return '1. Approve NFT (Gasless)'
+  }
+
+  const getCreateButtonText = () => {
+    if (createStatus === 'signing') return 'Sign in wallet...'
+    if (createStatus === 'relaying') return 'Relaying...'
+    return '2. Create Vault (Gasless)'
+  }
+
+  const getStatusText = () => {
+    if (approveStatus === 'success') return 'NFT approved! Now create the vault.'
+    if (createStatus === 'success') return `Success! ${txHash?.slice(0, 10)}...`
+    if (approveError) return `Approve error: ${approveError}`
+    if (createError) return `Create error: ${createError}`
+    return null
+  }
+
+  const statusText = getStatusText()
+  const hasError = approveError || createError
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 mb-6">
@@ -64,21 +108,26 @@ export function CreateVault() {
           className="px-3 py-2 bg-gray-700 rounded"
         />
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
         <button
           onClick={handleApproveNFT}
           disabled={isDisabled || !tokenId}
           className="px-4 py-2 bg-yellow-600 rounded hover:bg-yellow-700 disabled:opacity-50"
         >
-          1. Approve NFT
+          {getApproveButtonText()}
         </button>
         <button
           onClick={handleCreateVault}
           disabled={isDisabled || !tokenId || !collateralValue}
           className="px-4 py-2 bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
         >
-          2. Create Vault
+          {getCreateButtonText()}
         </button>
+        {statusText && (
+          <span className={`text-sm ${hasError ? 'text-red-400' : 'text-gray-400'}`}>
+            {statusText}
+          </span>
+        )}
       </div>
       <p className="text-gray-500 text-xs mt-2">
         Collateral value is in IDRP (e.g., 1000000 for 1M IDRP). Profit share is in basis points (1000 = 10%).

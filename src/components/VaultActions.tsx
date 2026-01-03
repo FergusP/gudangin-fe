@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { parseEther } from 'viem'
+import { parseEther, type Abi } from 'viem'
 import VaultABI from '../abi/Vault.json'
 import IDRPABI from '../abi/IDRP.json'
 import { contracts } from '../config'
+import { useMetaTransaction } from '../hooks'
+
+const vaultAbi = VaultABI as Abi
 
 interface VaultActionsProps {
   vaultAddress: `0x${string}`
@@ -12,10 +15,15 @@ interface VaultActionsProps {
 export function VaultActions({ vaultAddress }: VaultActionsProps) {
   const [depositAmount, setDepositAmount] = useState('')
 
+  // Direct tx for IDRP approve (token doesn't support ERC-2771)
   const { writeContract, data: hash, isPending } = useWriteContract()
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
 
-  const isDisabled = isPending || isConfirming
+  // Meta-tx for Vault actions (Vault supports ERC-2771)
+  const { execute, status, txHash, error } = useMetaTransaction()
+
+  const isMetaTxLoading = status === 'signing' || status === 'relaying'
+  const isApproveLoading = isPending || isConfirming
 
   const handleApproveIDRP = () => {
     if (!depositAmount) return
@@ -27,35 +35,58 @@ export function VaultActions({ vaultAddress }: VaultActionsProps) {
     })
   }
 
-  const handleDeposit = () => {
+  const handleDeposit = async () => {
     if (!depositAmount) return
-    writeContract({
-      address: vaultAddress,
-      abi: VaultABI,
+    await execute({
+      to: vaultAddress,
+      abi: vaultAbi,
       functionName: 'investorDeposit',
       args: [parseEther(depositAmount)],
+      gas: 200000n,
     })
   }
 
-  const handleEndVault = () => {
-    writeContract({
-      address: vaultAddress,
-      abi: VaultABI,
+  const handleEndVault = async () => {
+    await execute({
+      to: vaultAddress,
+      abi: vaultAbi,
       functionName: 'endVault',
+      args: [],
+      gas: 300000n,
     })
   }
 
-  const handleLiquidate = () => {
-    writeContract({
-      address: vaultAddress,
-      abi: VaultABI,
+  const handleLiquidate = async () => {
+    await execute({
+      to: vaultAddress,
+      abi: vaultAbi,
       functionName: 'liquidateToInvestor',
+      args: [],
+      gas: 300000n,
     })
   }
+
+  const getStatusText = () => {
+    if (isApproveLoading) return 'Approving IDRP...'
+    if (status === 'signing') return 'Sign in wallet...'
+    if (status === 'relaying') return 'Relaying...'
+    if (status === 'success') return `Success! ${txHash?.slice(0, 10)}...`
+    if (status === 'error') return `Error: ${error}`
+    return null
+  }
+
+  const statusText = getStatusText()
+  const isDisabled = isMetaTxLoading || isApproveLoading
 
   return (
     <div className="border-t border-gray-600 pt-4">
       <h3 className="text-lg font-semibold mb-3">Vault Actions</h3>
+
+      {statusText && (
+        <div className={`text-sm p-2 rounded mb-3 ${status === 'error' ? 'bg-red-900/50 text-red-400' : 'bg-gray-600 text-gray-300'}`}>
+          {statusText}
+        </div>
+      )}
 
       {/* Deposit */}
       <div className="mb-4 p-3 bg-gray-700 rounded">

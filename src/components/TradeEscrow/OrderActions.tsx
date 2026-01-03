@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { formatEther, keccak256, toBytes } from 'viem'
+import { formatEther, keccak256, toBytes, type Abi } from 'viem'
 import { contracts } from '../../config'
 import TradeEscrowABI from '../../abi/TradeEscrow.json'
 import IDRPABI from '../../abi/IDRP.json'
 import type { Order } from '../../types'
 import { OrderState } from '../../types'
+import { useMetaTransaction } from '../../hooks'
+
+const tradeEscrowAbi = TradeEscrowABI as Abi
 
 interface OrderActionsProps {
   orderId: `0x${string}`
@@ -16,10 +19,16 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
   const [shipDocsUri, setShipDocsUri] = useState('')
   const [disputeReason, setDisputeReason] = useState('')
 
+  // Direct tx for IDRP approve (token doesn't support ERC-2771)
   const { writeContract, data: hash, isPending } = useWriteContract()
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
 
-  const isDisabled = isPending || isConfirming
+  // Meta-tx for TradeEscrow actions (TradeEscrow supports ERC-2771)
+  const { execute, status, txHash, error } = useMetaTransaction()
+
+  const isMetaTxLoading = status === 'signing' || status === 'relaying'
+  const isApproveLoading = isPending || isConfirming
+  const isDisabled = isMetaTxLoading || isApproveLoading
 
   const handleApproveIDRP = () => {
     if (!order) return
@@ -31,43 +40,47 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
     })
   }
 
-  const handleFund = () => {
-    writeContract({
-      address: contracts.TRADE_ESCROW as `0x${string}`,
-      abi: TradeEscrowABI,
+  const handleFund = async () => {
+    await execute({
+      to: contracts.TRADE_ESCROW as `0x${string}`,
+      abi: tradeEscrowAbi,
       functionName: 'fund',
       args: [orderId],
+      gas: 200000n,
     })
   }
 
-  const handleMarkShipped = () => {
+  const handleMarkShipped = async () => {
     if (!shipDocsUri) return
     const docsHash = keccak256(toBytes(shipDocsUri))
-    writeContract({
-      address: contracts.TRADE_ESCROW as `0x${string}`,
-      abi: TradeEscrowABI,
+    await execute({
+      to: contracts.TRADE_ESCROW as `0x${string}`,
+      abi: tradeEscrowAbi,
       functionName: 'markShipped',
       args: [orderId, shipDocsUri, docsHash],
+      gas: 150000n,
     })
   }
 
-  const handleRaiseDispute = () => {
+  const handleRaiseDispute = async () => {
     if (!disputeReason) return
     const reasonHash = keccak256(toBytes(disputeReason))
-    writeContract({
-      address: contracts.TRADE_ESCROW as `0x${string}`,
-      abi: TradeEscrowABI,
+    await execute({
+      to: contracts.TRADE_ESCROW as `0x${string}`,
+      abi: tradeEscrowAbi,
       functionName: 'raiseDispute',
       args: [orderId, reasonHash],
+      gas: 150000n,
     })
   }
 
-  const handleRelease = () => {
-    writeContract({
-      address: contracts.TRADE_ESCROW as `0x${string}`,
-      abi: TradeEscrowABI,
+  const handleRelease = async () => {
+    await execute({
+      to: contracts.TRADE_ESCROW as `0x${string}`,
+      abi: tradeEscrowAbi,
       functionName: 'release',
       args: [orderId],
+      gas: 300000n,
     })
   }
 
@@ -76,8 +89,25 @@ export function OrderActions({ orderId, order }: OrderActionsProps) {
   const canDispute = order?.state === OrderState.SHIPPED
   const canRelease = order?.state === OrderState.SHIPPED
 
+  const getStatusText = () => {
+    if (isApproveLoading) return 'Approving IDRP...'
+    if (status === 'signing') return 'Sign in wallet...'
+    if (status === 'relaying') return 'Relaying...'
+    if (status === 'success') return `Success! ${txHash?.slice(0, 10)}...`
+    if (status === 'error') return `Error: ${error}`
+    return null
+  }
+
+  const statusText = getStatusText()
+
   return (
     <div className="space-y-3">
+      {statusText && (
+        <div className={`text-sm p-2 rounded ${status === 'error' ? 'bg-red-900/50 text-red-400' : 'bg-gray-600 text-gray-300'}`}>
+          {statusText}
+        </div>
+      )}
+
       {/* Fund Order */}
       <div className="flex gap-2">
         <button

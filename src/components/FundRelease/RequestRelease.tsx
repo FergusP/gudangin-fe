@@ -1,10 +1,14 @@
 import { useState } from 'react'
-import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount } from 'wagmi'
-import { parseEther } from 'viem'
+import { useReadContract, useAccount } from 'wagmi'
+import { parseEther, type Abi } from 'viem'
 import VaultABI from '../../abi/Vault.json'
 import GoodsTokenABI from '../../abi/GoodsToken.json'
 import { contracts } from '../../config'
+import { useMetaTransaction } from '../../hooks/useMetaTransaction'
 import type { VendorPayment } from '../../types'
+
+const vaultAbi = VaultABI as Abi
+const goodsTokenAbi = GoodsTokenABI as Abi
 
 interface RequestReleaseProps {
   vaultAddress: `0x${string}`
@@ -15,22 +19,35 @@ export function RequestRelease({ vaultAddress }: RequestReleaseProps) {
   const [tokenId, setTokenId] = useState('')
   const [vendors, setVendors] = useState<VendorPayment[]>([{ vendor: '', amount: '' }])
 
-  const { writeContract, data: hash, isPending } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
+  // Meta-tx for NFT approval (GoodsToken now supports ERC-2771)
+  const {
+    execute: executeApprove,
+    status: approveStatus,
+    error: approveError,
+    reset: resetApprove,
+  } = useMetaTransaction()
+
+  // Meta-tx for requestFundRelease (Vault supports ERC-2771)
+  const {
+    execute: executeRequest,
+    status: requestStatus,
+    error: requestError,
+  } = useMetaTransaction()
 
   // Check if trader has approved vault for NFT transfers
-  const { data: isApproved } = useReadContract({
+  const { data: isApproved, refetch: refetchApproval } = useReadContract({
     address: contracts.GOODS_TOKEN as `0x${string}`,
     abi: GoodsTokenABI,
     functionName: 'isApprovedForAll',
     args: address ? [address, vaultAddress] : undefined,
     query: {
       enabled: !!address,
-      refetchInterval: isConfirmed ? 1000 : false, // Refetch after tx confirms
     },
   })
 
-  const isDisabled = isPending || isConfirming
+  const isApproveLoading = approveStatus === 'signing' || approveStatus === 'relaying'
+  const isRequestLoading = requestStatus === 'signing' || requestStatus === 'relaying'
+  const isDisabled = isApproveLoading || isRequestLoading
 
   const addVendor = () => {
     setVendors([...vendors, { vendor: '', amount: '' }])
@@ -48,26 +65,31 @@ export function RequestRelease({ vaultAddress }: RequestReleaseProps) {
     setVendors(updated)
   }
 
-  const handleApproveVault = () => {
-    writeContract({
-      address: contracts.GOODS_TOKEN as `0x${string}`,
-      abi: GoodsTokenABI,
+  const handleApproveVault = async () => {
+    resetApprove()
+    await executeApprove({
+      to: contracts.GOODS_TOKEN as `0x${string}`,
+      abi: goodsTokenAbi,
       functionName: 'setApprovalForAll',
       args: [vaultAddress, true],
+      gas: 100000n,
     })
+    // Refetch approval status after success
+    setTimeout(() => refetchApproval(), 2000)
   }
 
-  const handleRequestRelease = () => {
+  const handleRequestRelease = async () => {
     if (!tokenId || vendors.some((v) => !v.vendor || !v.amount)) return
 
     const vendorAddresses = vendors.map((v) => v.vendor as `0x${string}`)
     const amounts = vendors.map((v) => parseEther(v.amount))
 
-    writeContract({
-      address: vaultAddress,
-      abi: VaultABI,
+    await executeRequest({
+      to: vaultAddress,
+      abi: vaultAbi,
       functionName: 'requestFundRelease',
       args: [BigInt(tokenId), vendorAddresses, amounts],
+      gas: 500000n,
     })
   }
 
@@ -78,6 +100,12 @@ export function RequestRelease({ vaultAddress }: RequestReleaseProps) {
       return sum
     }
   }, 0)
+
+  const getApproveButtonText = () => {
+    if (approveStatus === 'signing') return 'Sign in wallet...'
+    if (approveStatus === 'relaying') return 'Relaying...'
+    return 'Approve Vault (Gasless)'
+  }
 
   return (
     <div className="p-3 bg-gray-700 rounded mb-4">
@@ -94,8 +122,14 @@ export function RequestRelease({ vaultAddress }: RequestReleaseProps) {
             disabled={isDisabled}
             className="px-3 py-1 bg-yellow-600 rounded hover:bg-yellow-700 disabled:opacity-50 text-sm"
           >
-            Approve Vault for NFT Transfers
+            {getApproveButtonText()}
           </button>
+          {approveStatus === 'success' && (
+            <span className="text-green-400 text-sm ml-2">Approved!</span>
+          )}
+          {approveError && (
+            <span className="text-red-400 text-sm ml-2">Error: {approveError}</span>
+          )}
         </div>
       )}
 
@@ -157,8 +191,16 @@ export function RequestRelease({ vaultAddress }: RequestReleaseProps) {
         disabled={isDisabled || !isApproved || !tokenId || vendors.some((v) => !v.vendor || !v.amount)}
         className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
       >
-        Request Release
+        {requestStatus === 'signing' ? 'Sign in wallet...' :
+         requestStatus === 'relaying' ? 'Relaying...' :
+         'Request Release (Gasless)'}
       </button>
+      {requestStatus === 'success' && (
+        <p className="text-green-400 text-sm mt-2">Release requested successfully!</p>
+      )}
+      {requestError && (
+        <p className="text-red-400 text-sm mt-2">Error: {requestError}</p>
+      )}
     </div>
   )
 }
